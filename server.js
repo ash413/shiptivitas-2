@@ -127,7 +127,72 @@ app.put('/api/v1/clients/:id', (req, res) => {
 
   /* ---------- Update code below ----------*/
 
+  if (priority !== undefined) {
+    const { valid, messageObj } = validatePriority(priority);
+    if (!valid) {
+      res.status(400).send(messageObj);
+    }
+  }
+  else priority = Infinity;
 
+  const updatedClients = [];
+
+  const oldStatusClients = clients.filter(
+    c => c.id !== client.id && c.status === client.status
+  );
+  
+
+  oldStatusClients.forEach(c => {
+    if (c.id !== id && c.priority > client.priority) {
+      updatedClients.push([c.status, c.priority - 1, c.id]);
+    }
+  });
+
+  if (status === undefined) status = client.status;
+  const newStatusClients = clients.filter(c => c.status === status);
+
+  let newMaxPriority = 0;
+
+  newStatusClients.forEach(c => {
+    if (c.id !== id && c.priority >= priority) {
+      updatedClients.push([c.status, c.priority + 1, c.id]);
+      newMaxPriority = c.priority + 1;
+    }
+  });
+
+  if (priority === Infinity) priority = newMaxPriority + 1;
+  updatedClients.push([status, priority, client.id]);
+
+  updateClients(updatedClients);
+
+  return res.status(200).send(db.prepare("select * from clients").all());
+});
+
+// Allow all CORS for local testing
+app.use(function (req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept"
+  );
+  next();
+});
+
+const clientUpdate = db.prepare(
+  "UPDATE clients SET status=?, priority=? WHERE id=?"
+);
+
+/** updatedClients array entry format:
+ *
+ * [
+ *  [client status, client priorotiy, client id],
+ *  ...
+ * ]
+ *
+ */
+const updateClients = db.transaction(updatedClients => {
+  for (const client of updatedClients) clientUpdate.run(...client);
+});
 
   return res.status(200).send(clients);
 });
